@@ -1,0 +1,99 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Planning MSc 1 — Epitech</title>
+  <meta name="description" content="Calendrier interactif du MSc 1 Epitech">
+  <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>📅</text></svg>">
+  <link rel="stylesheet" href="style.css">
+  <script>
+    (function () {
+      var t = localStorage.getItem('theme');
+      if (t === 'dark' || (!t && window.matchMedia('(prefers-color-scheme: dark)').matches)) {
+        document.documentElement.dataset.theme = 'dark';
+      }
+    })();
+  </script>
+</head>
+<body>
+  <header class="topbar">
+    <div class="brand">
+      <span class="logo">E</span>
+      <div>
+        <h1>Planning MSc 1</h1>
+        <p class="subtitle">Epitech · 2025 – 2027</p>
+      </div>
+    </div>
+    <div class="actions">
+      <input id="search" type="search" placeholder="Rechercher un cours…" aria-label="Rechercher">
+      <a class="btn" href="calendar.ics" download="planning-msc1.ics" title="Télécharger le fichier .ics">⬇ .ics</a>
+      <button id="theme-toggle" class="btn icon" title="Changer de thème" aria-label="Changer de thème">🌓</button>
+    </div>
+  </header>
+
+  <main class="layout">
+    <aside class="sidebar">
+      <section class="card next" id="next-card">
+        <h2>Prochain cours</h2>
+        <div id="next-event" class="next-body">Chargement…</div>
+      </section>
+
+      <section class="card">
+        <h2>Statistiques</h2>
+        <div class="stats">
+          <div class="stat"><span id="stat-total">–</span><small>séances</small></div>
+          <div class="stat"><span id="stat-hours">–</span><small>heures</small></div>
+          <div class="stat"><span id="stat-done">–</span><small>effectuées</small></div>
+          <div class="stat"><span id="stat-left">–</span><small>restantes</small></div>
+        </div>
+        <div class="progress" title="Progression de l'année">
+          <div id="progress-bar" class="progress-bar"></div>
+        </div>
+        <p class="muted" id="progress-label"></p>
+      </section>
+
+      <section class="card">
+        <h2>Filtres</h2>
+        <div id="filters" class="filters"></div>
+        <label class="toggle">
+          <input type="checkbox" id="hide-weekends" checked>
+          <span>Masquer les week-ends</span>
+        </label>
+      </section>
+    </aside>
+
+    <section class="calendar-wrap card">
+      <div id="calendar"></div>
+    </section>
+  </main>
+
+  <dialog id="event-dialog">
+    <form method="dialog">
+      <div class="dialog-head">
+        <span id="dlg-color" class="dot"></span>
+        <h3 id="dlg-title"></h3>
+        <button class="close" aria-label="Fermer">✕</button>
+      </div>
+      <dl class="dlg-body">
+        <dt>Date</dt><dd id="dlg-date"></dd>
+        <dt>Horaire</dt><dd id="dlg-time"></dd>
+        <dt>Durée</dt><dd id="dlg-duration"></dd>
+        <dt>Modalité</dt><dd id="dlg-desc"></dd>
+      </dl>
+      <div class="dialog-foot">
+        <button type="button" id="dlg-gcal" class="btn">Ajouter à Google Agenda</button>
+        <button type="button" id="dlg-ics" class="btn">Exporter (.ics)</button>
+      </div>
+    </form>
+  </dialog>
+
+  <footer class="footer">
+    <span>Planning MSc 1 · Epitech</span>
+  </footer>
+
+  <script src="https://cdn.jsdelivr.net/npm/fullcalendar@6.1.15/index.global.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/@fullcalendar/core@6.1.15/locales/fr.global.min.js"></script>
+  <script src="app.js"></script>
+</body>
+</html>

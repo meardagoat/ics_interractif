@@ -1,0 +1,9 @@
+{
+  "name": "ics_interractif",
+  "version": "1.0.0",
+  "description": "Calendrier interactif du MSc 1 Epitech",
+  "scripts": {
+    "start": "python3 -m http.server 8080"
+  },
+  "private": true
+}
