@@ -4,18 +4,21 @@
   const ICS_URL = 'calendar.ics';
 
   const CATEGORIES = [
-    { id: 'msc1', label: 'MSc 1', color: '#0b5cff', match: (s) => /^msc\s*1$/i.test(s) },
-    { id: 'premsc', label: 'Pré MSc', color: '#8b5cf6', match: (s) => /^pr[ée]\s*msc/i.test(s) },
-    { id: 'kickoff', label: 'Kick-off', color: '#f59e0b', match: (s) => /kick-?off/i.test(s) },
-    { id: 'seminar', label: 'Séminaires', color: '#10b981', match: (s) => /s[ée]minaire/i.test(s) },
-    { id: 'other', label: 'Événements', color: '#ef4444', match: () => true },
+    { id: 'msc1', label: 'MSc 1', color: '#013afb', text: '#f2f4f8', match: (s) => /^msc\s*1$/i.test(s) },
+    { id: 'premsc', label: 'Pré MSc', color: '#ff1ef7', text: '#181818', match: (s) => /^pr[ée]\s*msc/i.test(s) },
+    { id: 'kickoff', label: 'Kick-off', color: '#ff5a3a', text: '#181818', match: (s) => /kick-?off/i.test(s) },
+    { id: 'seminar', label: 'Séminaires', color: '#00ff97', text: '#181818', match: (s) => /s[ée]minaire/i.test(s) },
+    { id: 'other', label: 'Événements', color: '#181818', text: '#f2f4f8', match: () => true },
   ];
 
   const state = {
     events: [],
     hidden: new Set(JSON.parse(localStorage.getItem('hiddenCats') || '[]')),
     query: '',
+    next: null,
   };
+
+  const $ = (id) => document.getElementById(id);
 
   // ---------- ICS parsing ----------
   function unfold(text) {
@@ -23,11 +26,7 @@
   }
 
   function unescapeText(v) {
-    return v
-      .replace(/\\n/gi, '\n')
-      .replace(/\\,/g, ',')
-      .replace(/\\;/g, ';')
-      .replace(/\\\\/g, '\\');
+    return v.replace(/\\n/gi, '\n').replace(/\\,/g, ',').replace(/\\;/g, ';').replace(/\\\\/g, '\\');
   }
 
   function parseDate(v) {
@@ -39,10 +38,9 @@
   }
 
   function parseICS(text) {
-    const lines = unfold(text).split('\n');
     const out = [];
     let cur = null;
-    for (const line of lines) {
+    for (const line of unfold(text).split('\n')) {
       if (line === 'BEGIN:VEVENT') { cur = {}; continue; }
       if (line === 'END:VEVENT') { if (cur) out.push(cur); cur = null; continue; }
       if (!cur) continue;
@@ -54,7 +52,6 @@
         case 'UID': cur.uid = value; break;
         case 'SUMMARY': cur.summary = unescapeText(value).replace(/\s+/g, ' ').trim(); break;
         case 'DESCRIPTION': cur.description = unescapeText(value).split('\n').map((s) => s.trim()).filter(Boolean).join(' · '); break;
-        case 'LOCATION': cur.location = unescapeText(value).trim(); break;
         case 'DTSTART': cur.start = parseDate(value); break;
         case 'DTEND': cur.end = parseDate(value); break;
       }
@@ -62,95 +59,21 @@
     return out.filter((e) => e.start);
   }
 
-  function categorize(summary) {
-    return CATEGORIES.find((c) => c.match(summary || ''));
-  }
-
-  function normalizeTitle(summary) {
-    return /^msc\s*1$/i.test(summary) ? 'MSc 1' : summary;
-  }
+  const categorize = (title) => CATEGORIES.find((c) => c.match(title || ''));
+  const normalizeTitle = (s) => (/^msc\s*1$/i.test(s) ? 'MSc 1' : s);
 
   // ---------- Formatting ----------
   const fmtDate = new Intl.DateTimeFormat('fr-FR', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' });
   const fmtTime = new Intl.DateTimeFormat('fr-FR', { hour: '2-digit', minute: '2-digit' });
   const fmtShort = new Intl.DateTimeFormat('fr-FR', { weekday: 'long', day: 'numeric', month: 'long' });
+  const fmtMarquee = new Intl.DateTimeFormat('fr-FR', { weekday: 'short', day: '2-digit', month: '2-digit' });
+  const pad = (n) => String(n).padStart(2, '0');
 
   function durationLabel(ms) {
     const mins = Math.round(ms / 60000);
     const h = Math.floor(mins / 60);
     const m = mins % 60;
-    return h ? `${h}h${m ? String(m).padStart(2, '0') : ''}` : `${m} min`;
-  }
-
-  function relative(ms) {
-    const mins = Math.round(ms / 60000);
-    if (mins < 60) return `dans ${mins} min`;
-    const hours = Math.round(mins / 60);
-    if (hours < 24) return `dans ${hours} h`;
-    const days = Math.round(hours / 24);
-    return days === 1 ? 'demain' : `dans ${days} jours`;
-  }
-
-  // ---------- Sidebar ----------
-  function renderFilters() {
-    const wrap = document.getElementById('filters');
-    wrap.innerHTML = '';
-    for (const cat of CATEGORIES) {
-      const count = state.events.filter((e) => e.cat.id === cat.id).length;
-      if (!count) continue;
-      const label = document.createElement('label');
-      label.className = 'filter';
-      label.innerHTML = `
-        <input type="checkbox" ${state.hidden.has(cat.id) ? '' : 'checked'}>
-        <span class="swatch" style="background:${cat.color};border-color:${cat.color}"></span>
-        <span class="label">${cat.label}</span>
-        <span class="count">${count}</span>`;
-      label.querySelector('input').addEventListener('change', (ev) => {
-        if (ev.target.checked) state.hidden.delete(cat.id); else state.hidden.add(cat.id);
-        localStorage.setItem('hiddenCats', JSON.stringify([...state.hidden]));
-        refresh();
-      });
-      wrap.appendChild(label);
-    }
-  }
-
-  function renderStats() {
-    const now = new Date();
-    const evts = visibleEvents();
-    const totalMs = evts.reduce((a, e) => a + (e.end - e.start), 0);
-    const doneMs = evts.filter((e) => e.end <= now).reduce((a, e) => a + (e.end - e.start), 0);
-    const done = evts.filter((e) => e.end <= now).length;
-    document.getElementById('stat-total').textContent = evts.length;
-    document.getElementById('stat-hours').textContent = Math.round(totalMs / 3600000);
-    document.getElementById('stat-done').textContent = done;
-    document.getElementById('stat-left').textContent = evts.length - done;
-    const pct = totalMs ? Math.round((doneMs / totalMs) * 100) : 0;
-    document.getElementById('progress-bar').style.width = pct + '%';
-    document.getElementById('progress-label').textContent =
-      `${pct} % des heures effectuées (${Math.round(doneMs / 3600000)} h / ${Math.round(totalMs / 3600000)} h)`;
-  }
-
-  function renderNext() {
-    const now = new Date();
-    const box = document.getElementById('next-event');
-    const evts = visibleEvents().sort((a, b) => a.start - b.start);
-    const live = evts.find((e) => e.start <= now && e.end > now);
-    const next = live || evts.find((e) => e.start > now);
-    if (!next) {
-      box.innerHTML = '<span class="muted">Aucun cours à venir 🎉</span>';
-      return;
-    }
-    const badge = live
-      ? `<span class="countdown live">● En cours · fin à ${fmtTime.format(next.end)}</span>`
-      : `<span class="countdown">${relative(next.start - now)}</span>`;
-    box.innerHTML = `
-      <div class="title" style="color:${next.cat.color}">${escapeHtml(next.title)}</div>
-      <div class="when">${fmtShort.format(next.start)}<br>${fmtTime.format(next.start)} – ${fmtTime.format(next.end)}</div>
-      ${badge}`;
-    box.style.cursor = 'pointer';
-    box.onclick = () => {
-      calendar.changeView('timeGridWeek', next.start);
-    };
+    return h ? `${h}h${m ? pad(m) : ''}` : `${m} min`;
   }
 
   function escapeHtml(s) {
@@ -165,35 +88,177 @@
       (!q || e.title.toLowerCase().includes(q) || (e.description || '').toLowerCase().includes(q)));
   }
 
-  function toFcEvents() {
+  function upcomingEvents() {
     const now = new Date();
-    return visibleEvents().map((e) => ({
-      id: e.uid,
-      title: e.title,
-      start: e.start,
-      end: e.end,
-      backgroundColor: e.cat.color,
-      borderColor: e.cat.color,
-      classNames: e.end < now ? ['past'] : [],
-      extendedProps: { raw: e },
-    }));
+    return visibleEvents().filter((e) => e.end > now).sort((a, b) => a.start - b.start);
+  }
+
+  // ---------- Filters ----------
+  function renderFilters() {
+    const wrap = $('filters');
+    wrap.innerHTML = '';
+    for (const cat of CATEGORIES) {
+      const count = state.events.filter((e) => e.cat.id === cat.id).length;
+      if (!count) continue;
+      const label = document.createElement('label');
+      label.className = 'chip';
+      label.innerHTML = `
+        <input type="checkbox" ${state.hidden.has(cat.id) ? '' : 'checked'}>
+        <span class="sw" style="background:${cat.color}"></span>
+        <span class="label">${cat.label}</span>
+        <span class="count">${count}</span>`;
+      label.querySelector('input').addEventListener('change', (ev) => {
+        if (ev.target.checked) state.hidden.delete(cat.id); else state.hidden.add(cat.id);
+        localStorage.setItem('hiddenCats', JSON.stringify([...state.hidden]));
+        refresh();
+      });
+      wrap.appendChild(label);
+    }
+  }
+
+  // ---------- Stats (animated counters) ----------
+  let statsShown = false;
+
+  function animateNumber(el, to, duration = 1800) {
+    const from = +el.dataset.value || 0;
+    el.dataset.value = to;
+    const t0 = performance.now();
+    const step = (t) => {
+      const p = Math.min(1, (t - t0) / duration);
+      const eased = 1 - Math.pow(1 - p, 4);
+      el.textContent = Math.round(from + (to - from) * eased);
+      if (p < 1) requestAnimationFrame(step);
+    };
+    requestAnimationFrame(step);
+  }
+
+  function renderStats() {
+    const now = new Date();
+    const evts = visibleEvents();
+    const hours = (list) => list.reduce((a, e) => a + (e.end - e.start), 0) / 3600000;
+    const past = evts.filter((e) => e.end <= now);
+    const totalH = hours(evts);
+    const doneH = hours(past);
+    const pct = totalH ? Math.round((doneH / totalH) * 100) : 0;
+
+    state.stats = { total: evts.length, hours: Math.round(totalH), done: past.length, left: evts.length - past.length, pct };
+    $('progress-label').textContent = `${Math.round(doneH)} h effectuées sur ${Math.round(totalH)} h au programme`;
+    if (statsShown) applyStats();
+  }
+
+  function applyStats() {
+    const s = state.stats;
+    if (!s) return;
+    animateNumber($('stat-total'), s.total);
+    animateNumber($('stat-hours'), s.hours);
+    animateNumber($('stat-done'), s.done);
+    animateNumber($('stat-left'), s.left);
+    animateNumber($('progress-pct'), s.pct);
+    $('progress-bar').style.width = s.pct + '%';
+  }
+
+  // ---------- Hero: next course + countdown ----------
+  function renderNext() {
+    const now = new Date();
+    const next = upcomingEvents()[0];
+    state.next = next || null;
+    const tag = $('next-tag');
+    if (!next) {
+      tag.textContent = 'Terminé';
+      tag.classList.remove('live');
+      $('next-title').textContent = 'Plus de cours';
+      $('next-when').textContent = 'Aucun cours à venir pour cette sélection.';
+      $('countdown').style.display = 'none';
+      return;
+    }
+    const live = next.start <= now;
+    tag.textContent = live ? '● En cours' : 'Prochain cours';
+    tag.classList.toggle('live', live);
+    $('next-title').textContent = next.title;
+    $('next-when').textContent = `${fmtShort.format(next.start)} · ${fmtTime.format(next.start)} – ${fmtTime.format(next.end)}`;
+    $('countdown').style.display = '';
+    tickCountdown();
+  }
+
+  function tickCountdown() {
+    const e = state.next;
+    if (!e) return;
+    const now = new Date();
+    if (now >= e.end || (e.start <= now && !$('next-tag').classList.contains('live'))) {
+      refresh();
+      return;
+    }
+    const target = e.start > now ? e.start : e.end;
+    let diff = Math.max(0, Math.floor((target - now) / 1000));
+    const d = Math.floor(diff / 86400); diff %= 86400;
+    const h = Math.floor(diff / 3600); diff %= 3600;
+    const m = Math.floor(diff / 60);
+    const s = diff % 60;
+    const box = $('countdown');
+    box.querySelector('[data-u="d"]').textContent = pad(d);
+    box.querySelector('[data-u="h"]').textContent = pad(h);
+    box.querySelector('[data-u="m"]').textContent = pad(m);
+    box.querySelector('[data-u="s"]').textContent = pad(s);
+  }
+
+  // ---------- Marquee ----------
+  function renderMarquee() {
+    const items = upcomingEvents().slice(0, 10);
+    const track = $('marquee');
+    if (!items.length) {
+      track.innerHTML = '<span class="marquee-item">Fin du MSc 1 <span class="sep">✦</span></span>'.repeat(12);
+      return;
+    }
+    let html = items.map((e) => `
+      <span class="marquee-item">
+        <em>${fmtMarquee.format(e.start).replace('.', '')} · ${fmtTime.format(e.start)}</em>
+        ${escapeHtml(e.title)}
+        <span class="sep">✦</span>
+      </span>`).join('');
+    while (items.length && html.split('marquee-item').length < 9) html += html;
+    track.innerHTML = html + html;
+  }
+
+  // ---------- Upcoming list ----------
+  function renderUpcoming() {
+    const list = $('upcoming');
+    const items = upcomingEvents().slice(0, 6);
+    if (!items.length) {
+      list.innerHTML = '<li class="up-item"><span class="up-idx">—</span><span class="up-title">Rien à l\'horizon</span></li>';
+      return;
+    }
+    list.innerHTML = items.map((e, i) => `
+      <li class="up-item" data-uid="${escapeHtml(e.uid)}" data-cursor="Ouvrir">
+        <span class="up-idx">${pad(i + 1)}</span>
+        <span class="up-title"><span class="up-sw" style="background:${e.cat.color}"></span>${escapeHtml(e.title)}</span>
+        <span class="up-date">${fmtShort.format(e.start)}<small>${fmtTime.format(e.start)} – ${fmtTime.format(e.end)} · ${durationLabel(e.end - e.start)}</small></span>
+        <span class="up-arrow">↗</span>
+      </li>`).join('');
+    list.querySelectorAll('.up-item[data-uid]').forEach((li) => {
+      li.addEventListener('click', () => {
+        const e = state.events.find((x) => x.uid === li.dataset.uid);
+        if (e) openDialog(e);
+      });
+    });
+    bindCursorTargets(list);
   }
 
   // ---------- Dialog ----------
-  function pad(n) { return String(n).padStart(2, '0'); }
   function icsStamp(d) {
     return `${d.getUTCFullYear()}${pad(d.getUTCMonth() + 1)}${pad(d.getUTCDate())}T${pad(d.getUTCHours())}${pad(d.getUTCMinutes())}00Z`;
   }
 
   function openDialog(e) {
-    document.getElementById('dlg-title').textContent = e.title;
-    document.getElementById('dlg-color').style.background = e.cat.color;
-    document.getElementById('dlg-date').textContent = fmtDate.format(e.start);
-    document.getElementById('dlg-time').textContent = `${fmtTime.format(e.start)} – ${fmtTime.format(e.end)}`;
-    document.getElementById('dlg-duration').textContent = durationLabel(e.end - e.start);
-    document.getElementById('dlg-desc').textContent = e.description || '—';
+    $('dlg-cat').textContent = e.cat.label;
+    $('dlg-head').style.background = e.cat.color;
+    $('dlg-title').textContent = e.title;
+    $('dlg-date').textContent = fmtDate.format(e.start);
+    $('dlg-time').textContent = `${fmtTime.format(e.start)} – ${fmtTime.format(e.end)}`;
+    $('dlg-duration').textContent = durationLabel(e.end - e.start);
+    $('dlg-desc').textContent = e.description || '—';
+    document.querySelector('#event-dialog .close').style.color = e.cat.text;
 
-    document.getElementById('dlg-gcal').onclick = () => {
+    $('dlg-gcal').onclick = () => {
       const url = new URL('https://calendar.google.com/calendar/render');
       url.searchParams.set('action', 'TEMPLATE');
       url.searchParams.set('text', e.title);
@@ -201,7 +266,7 @@
       url.searchParams.set('details', e.description || '');
       window.open(url.toString(), '_blank', 'noopener');
     };
-    document.getElementById('dlg-ics').onclick = () => {
+    $('dlg-ics').onclick = () => {
       const body = [
         'BEGIN:VCALENDAR', 'VERSION:2.0', 'PRODID:-//MSc1//Planning//FR',
         'BEGIN:VEVENT',
@@ -213,22 +278,56 @@
         `DESCRIPTION:${e.description || ''}`,
         'END:VEVENT', 'END:VCALENDAR',
       ].join('\r\n');
-      const blob = new Blob([body], { type: 'text/calendar' });
       const a = document.createElement('a');
-      a.href = URL.createObjectURL(blob);
-      a.download = `${e.title.replace(/[^\w\-]+/g, '_')}_${e.start.toISOString().slice(0, 10)}.ics`;
+      a.href = URL.createObjectURL(new Blob([body], { type: 'text/calendar' }));
+      a.download = `${e.title.replace(/[^\w-]+/g, '_')}_${e.start.toISOString().slice(0, 10)}.ics`;
       a.click();
       URL.revokeObjectURL(a.href);
     };
-    document.getElementById('event-dialog').showModal();
+    $('event-dialog').showModal();
+  }
+
+  // ---------- Custom cursor ----------
+  const cursor = document.querySelector('.cursor');
+  const cursorLabel = cursor.querySelector('.cursor-label');
+  const finePointer = window.matchMedia('(hover: hover) and (pointer: fine)').matches;
+
+  function bindCursorTarget(el) {
+    if (!finePointer || el.dataset.cursorBound) return;
+    el.dataset.cursorBound = '1';
+    el.addEventListener('mouseenter', () => {
+      cursorLabel.textContent = el.dataset.cursor || '';
+      cursor.classList.add('big');
+    });
+    el.addEventListener('mouseleave', () => cursor.classList.remove('big'));
+  }
+
+  function bindCursorTargets(root = document) {
+    root.querySelectorAll('[data-cursor]').forEach(bindCursorTarget);
+  }
+
+  if (finePointer) {
+    let cx = 0, cy = 0, tx = 0, ty = 0;
+    window.addEventListener('mousemove', (ev) => {
+      tx = ev.clientX; ty = ev.clientY;
+      cursor.classList.add('visible');
+    });
+    document.addEventListener('mouseleave', () => cursor.classList.remove('visible'));
+    const loop = () => {
+      cx += (tx - cx) * 0.2;
+      cy += (ty - cy) * 0.2;
+      cursor.style.transform = `translate(${cx}px, ${cy}px)`;
+      requestAnimationFrame(loop);
+    };
+    loop();
   }
 
   // ---------- Calendar ----------
   const isMobile = window.matchMedia('(max-width: 700px)').matches;
   const hideWeekends = localStorage.getItem('hideWeekends') !== 'false';
-  document.getElementById('hide-weekends').checked = hideWeekends;
+  $('hide-weekends').checked = hideWeekends;
 
-  const calendar = new FullCalendar.Calendar(document.getElementById('calendar'), {
+  const calendar = new FullCalendar.Calendar($('calendar'), {
     locale: 'fr',
     timeZone: 'local',
     initialView: localStorage.getItem('view') || (isMobile ? 'listWeek' : 'timeGridWeek'),
@@ -256,56 +355,115 @@
     eventClick: (info) => openDialog(info.event.extendedProps.raw),
     eventDidMount: (info) => {
       const e = info.event.extendedProps.raw;
-      info.el.title = `${e.title}\n${fmtTime.format(e.start)} – ${fmtTime.format(e.end)}`;
+      info.el.title = `${e.title} — ${fmtTime.format(e.start)} – ${fmtTime.format(e.end)}`;
+      info.el.dataset.cursor = 'Voir';
+      bindCursorTarget(info.el);
     },
     datesSet: (info) => localStorage.setItem('view', info.view.type),
     noEventsContent: 'Aucun cours sur cette période',
   });
   calendar.render();
 
+  function toFcEvents() {
+    const now = new Date();
+    return visibleEvents().map((e) => ({
+      id: e.uid,
+      title: e.title,
+      start: e.start,
+      end: e.end,
+      backgroundColor: e.cat.color,
+      borderColor: e.cat.color,
+      textColor: e.cat.text,
+      classNames: e.end < now ? ['past'] : [],
+      extendedProps: { raw: e },
+    }));
+  }
+
   function refresh() {
     calendar.removeAllEventSources();
     calendar.addEventSource(toFcEvents());
     renderStats();
     renderNext();
+    renderMarquee();
+    renderUpcoming();
   }
+
+  // ---------- Scroll effects ----------
+  const nav = document.querySelector('.nav');
+  const hero = document.querySelector('.hero');
+  const onScroll = () => nav.classList.toggle('scrolled', window.scrollY > hero.offsetHeight - 80);
+  window.addEventListener('scroll', onScroll, { passive: true });
+  onScroll();
+
+  const io = new IntersectionObserver((entries) => {
+    for (const en of entries) {
+      if (!en.isIntersecting) continue;
+      en.target.classList.add('in');
+      io.unobserve(en.target);
+      if (en.target.classList.contains('stat') && !statsShown) {
+        statsShown = true;
+        applyStats();
+      }
+    }
+  }, { threshold: 0.15 });
+  document.querySelectorAll('.reveal').forEach((el) => io.observe(el));
 
   // ---------- Controls ----------
   let searchTimer;
-  document.getElementById('search').addEventListener('input', (ev) => {
+  $('search').addEventListener('input', (ev) => {
     clearTimeout(searchTimer);
-    searchTimer = setTimeout(() => {
-      state.query = ev.target.value;
-      refresh();
-    }, 150);
+    searchTimer = setTimeout(() => { state.query = ev.target.value; refresh(); }, 150);
   });
 
-  document.getElementById('hide-weekends').addEventListener('change', (ev) => {
+  $('hide-weekends').addEventListener('change', (ev) => {
     localStorage.setItem('hideWeekends', ev.target.checked);
     calendar.setOption('weekends', !ev.target.checked);
   });
 
-  document.getElementById('theme-toggle').addEventListener('click', () => {
-    const root = document.documentElement;
-    const dark = root.dataset.theme !== 'dark';
-    if (dark) root.dataset.theme = 'dark'; else delete root.dataset.theme;
-    localStorage.setItem('theme', dark ? 'dark' : 'light');
+  $('next-card').addEventListener('click', () => {
+    if (!state.next) return;
+    calendar.changeView(isMobile ? 'listWeek' : 'timeGridWeek', state.next.start);
+    $('calendrier').scrollIntoView({ behavior: 'smooth' });
   });
 
   document.addEventListener('keydown', (ev) => {
     if (ev.target.matches('input, textarea') || document.querySelector('dialog[open]')) return;
     if (ev.key === 'ArrowLeft') calendar.prev();
     else if (ev.key === 'ArrowRight') calendar.next();
-    else if (ev.key === 't') calendar.today();
-    else if (ev.key === '/') { ev.preventDefault(); document.getElementById('search').focus(); }
+    else if (ev.key.toLowerCase() === 't') calendar.today();
+    else if (ev.key === '/') {
+      ev.preventDefault();
+      $('calendrier').scrollIntoView({ behavior: 'smooth' });
+      $('search').focus({ preventScroll: true });
+    }
   });
 
-  document.getElementById('event-dialog').addEventListener('click', (ev) => {
+  $('event-dialog').addEventListener('click', (ev) => {
     if (ev.target === ev.currentTarget) ev.currentTarget.close();
   });
 
-  // ---------- Load ----------
-  fetch(ICS_URL)
+  bindCursorTargets();
+
+  // ---------- Loader + data ----------
+  const loaderCount = $('loader-count');
+  let loadPct = 0;
+  const loaderTimer = setInterval(() => {
+    loadPct = Math.min(99, loadPct + Math.ceil(Math.random() * 12));
+    loaderCount.textContent = pad(loadPct);
+  }, 60);
+
+  function finishLoading() {
+    clearInterval(loaderTimer);
+    loaderCount.textContent = '100';
+    setTimeout(() => {
+      document.body.classList.add('loaded');
+      document.body.classList.remove('is-loading');
+      calendar.updateSize();
+    }, 350);
+  }
+
+  const minDelay = new Promise((r) => setTimeout(r, 900));
+  const data = fetch(ICS_URL)
     .then((r) => {
       if (!r.ok) throw new Error(`HTTP ${r.status}`);
       return r.text();
@@ -317,9 +475,12 @@
       });
       renderFilters();
       refresh();
-      setInterval(renderNext, 60000);
+      setInterval(tickCountdown, 1000);
     })
     .catch((err) => {
-      document.getElementById('next-event').textContent = `Erreur de chargement du calendrier (${err.message})`;
+      $('next-title').textContent = 'Erreur';
+      $('next-when').textContent = `Impossible de charger le calendrier (${err.message})`;
     });
+
+  Promise.all([data, minDelay]).then(finishLoading);
 })();
