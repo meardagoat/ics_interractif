@@ -20,6 +20,16 @@
 
   const $ = (id) => document.getElementById(id);
 
+  // Messages read aloud by screen readers (polite live region).
+  let announceTimer;
+  function announce(msg) {
+    const box = $('sr-status');
+    clearTimeout(announceTimer);
+    box.textContent = '';
+    announceTimer = setTimeout(() => { box.textContent = msg; }, 120);
+  }
+  const plural = (n, one, many) => `${n} ${n > 1 ? many : one}`;
+
   // ---------- ICS parsing ----------
   function unfold(text) {
     return text.replace(/\r\n/g, '\n').replace(/\n[ \t]/g, '');
@@ -76,6 +86,12 @@
     return h ? `${h}h${m ? pad(m) : ''}` : `${m} min`;
   }
 
+  function eventLabel(e) {
+    const status = e.end <= new Date() ? ', terminé' : (e.start <= new Date() ? ', en cours' : '');
+    const cat = e.cat.label.toLowerCase() === e.title.toLowerCase() ? '' : `, ${e.cat.label}`;
+    return `${e.title}${cat}, ${fmtDate.format(e.start)}, de ${fmtTime.format(e.start)} à ${fmtTime.format(e.end)}${status}`;
+  }
+
   function escapeHtml(s) {
     return String(s).replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
   }
@@ -96,7 +112,7 @@
   // ---------- Filters ----------
   function renderFilters() {
     const wrap = $('filters');
-    wrap.innerHTML = '';
+    wrap.querySelectorAll('.chip').forEach((c) => c.remove());
     for (const cat of CATEGORIES) {
       const count = state.events.filter((e) => e.cat.id === cat.id).length;
       if (!count) continue;
@@ -104,13 +120,14 @@
       label.className = 'chip';
       label.innerHTML = `
         <input type="checkbox" ${state.hidden.has(cat.id) ? '' : 'checked'}>
-        <span class="sw" style="background:${cat.color}"></span>
+        <span class="sw" aria-hidden="true" style="background:${cat.color}"></span>
         <span class="label">${cat.label}</span>
-        <span class="count">${count}</span>`;
+        <span class="count"><span aria-hidden="true">${count}</span><span class="sr-only">, ${plural(count, 'séance', 'séances')}</span></span>`;
       label.querySelector('input').addEventListener('change', (ev) => {
         if (ev.target.checked) state.hidden.delete(cat.id); else state.hidden.add(cat.id);
         localStorage.setItem('hiddenCats', JSON.stringify([...state.hidden]));
         refresh();
+        announce(`${cat.label} ${ev.target.checked ? 'affichés' : 'masqués'}. ${plural(visibleEvents().length, 'cours affiché', 'cours affichés')}.`);
       });
       wrap.appendChild(label);
     }
@@ -143,6 +160,13 @@
 
     state.stats = { total: evts.length, hours: Math.round(totalH), done: past.length, left: evts.length - past.length, pct };
     $('progress-label').textContent = `${Math.round(doneH)} h effectuées sur ${Math.round(totalH)} h au programme`;
+    $('stat-total-sr').textContent = `${plural(evts.length, 'séance', 'séances')} au total`;
+    $('stat-hours-sr').textContent = `${plural(Math.round(totalH), 'heure', 'heures')} de cours`;
+    $('stat-done-sr').textContent = `${plural(past.length, 'séance effectuée', 'séances effectuées')}`;
+    $('stat-left-sr').textContent = `${plural(evts.length - past.length, 'séance restante', 'séances restantes')}`;
+    const track = $('progress-track');
+    track.setAttribute('aria-valuenow', pct);
+    track.setAttribute('aria-valuetext', `${pct} % de l'année effectuée`);
     if (statsShown) applyStats();
   }
 
@@ -169,6 +193,7 @@
       $('next-title').textContent = 'Plus de cours';
       $('next-when').textContent = 'Aucun cours à venir pour cette sélection.';
       $('countdown').style.display = 'none';
+      $('countdown-sr').textContent = '';
       return;
     }
     const live = next.start <= now;
@@ -199,6 +224,14 @@
     box.querySelector('[data-u="h"]').textContent = pad(h);
     box.querySelector('[data-u="m"]').textContent = pad(m);
     box.querySelector('[data-u="s"]').textContent = pad(s);
+
+    const parts = [];
+    if (d) parts.push(plural(d, 'jour', 'jours'));
+    if (h) parts.push(plural(h, 'heure', 'heures'));
+    if (!d) parts.push(plural(m, 'minute', 'minutes'));
+    const srText = e.start > now ? `Commence dans ${parts.join(' ')}.` : `En cours, se termine dans ${parts.join(' ')}.`;
+    const sr = $('countdown-sr');
+    if (sr.textContent !== srText) sr.textContent = srText;
   }
 
   // ---------- Marquee ----------
@@ -224,19 +257,21 @@
     const list = $('upcoming');
     const items = upcomingEvents().slice(0, 6);
     if (!items.length) {
-      list.innerHTML = '<li class="up-item"><span class="up-idx">—</span><span class="up-title">Rien à l\'horizon</span></li>';
+      list.innerHTML = '<li class="up-item"><span class="up-title">Aucun cours à venir pour cette sélection</span></li>';
       return;
     }
     list.innerHTML = items.map((e, i) => `
-      <li class="up-item" data-uid="${escapeHtml(e.uid)}" data-cursor="Ouvrir">
-        <span class="up-idx">${pad(i + 1)}</span>
-        <span class="up-title"><span class="up-sw" style="background:${e.cat.color}"></span>${escapeHtml(e.title)}</span>
-        <span class="up-date">${fmtShort.format(e.start)}<small>${fmtTime.format(e.start)} – ${fmtTime.format(e.end)} · ${durationLabel(e.end - e.start)}</small></span>
-        <span class="up-arrow">↗</span>
+      <li class="up-item">
+        <button type="button" class="up-btn" data-uid="${escapeHtml(e.uid)}" data-cursor="Ouvrir" aria-label="${escapeHtml(eventLabel(e))}. Ouvrir la fiche.">
+          <span class="up-idx" aria-hidden="true">${pad(i + 1)}</span>
+          <span class="up-title"><span class="up-sw" aria-hidden="true" style="background:${e.cat.color}"></span>${escapeHtml(e.title)}</span>
+          <span class="up-date">${fmtShort.format(e.start)}<small>${fmtTime.format(e.start)} – ${fmtTime.format(e.end)} · ${durationLabel(e.end - e.start)}</small></span>
+          <span class="up-arrow" aria-hidden="true">↗</span>
+        </button>
       </li>`).join('');
-    list.querySelectorAll('.up-item[data-uid]').forEach((li) => {
-      li.addEventListener('click', () => {
-        const e = state.events.find((x) => x.uid === li.dataset.uid);
+    list.querySelectorAll('.up-btn').forEach((btn) => {
+      btn.addEventListener('click', () => {
+        const e = state.events.find((x) => x.uid === btn.dataset.uid);
         if (e) openDialog(e);
       });
     });
@@ -327,6 +362,7 @@
   const hideWeekends = localStorage.getItem('hideWeekends') !== 'false';
   $('hide-weekends').checked = hideWeekends;
 
+  let calendarReady = false;
   const calendar = new FullCalendar.Calendar($('calendar'), {
     locale: 'fr',
     timeZone: 'local',
@@ -351,18 +387,41 @@
     allDaySlot: false,
     expandRows: true,
     dayMaxEvents: 3,
+    eventInteractive: true,
     eventTimeFormat: { hour: '2-digit', minute: '2-digit', meridiem: false },
     eventClick: (info) => openDialog(info.event.extendedProps.raw),
     eventDidMount: (info) => {
       const e = info.event.extendedProps.raw;
       info.el.title = `${e.title} — ${fmtTime.format(e.start)} – ${fmtTime.format(e.end)}`;
+      info.el.setAttribute('role', 'button');
+      info.el.setAttribute('aria-label', `${eventLabel(e)}. Ouvrir la fiche.`);
       info.el.dataset.cursor = 'Voir';
       bindCursorTarget(info.el);
     },
-    datesSet: (info) => localStorage.setItem('view', info.view.type),
+    datesSet: (info) => {
+      localStorage.setItem('view', info.view.type);
+      if (!calendarReady) return;
+      const n = visibleEvents().filter((e) => e.end > info.start && e.start < info.end).length;
+      announce(`${info.view.title} : ${plural(n, 'cours', 'cours')}.`);
+    },
     noEventsContent: 'Aucun cours sur cette période',
   });
   calendar.render();
+
+  // Patch FullCalendar markup that screen readers / axe flag.
+  function patchCalendarA11y() {
+    const root = $('calendar');
+    root.querySelectorAll('.fc-icon:not([aria-hidden])').forEach((el) => {
+      el.setAttribute('aria-hidden', 'true');
+      el.removeAttribute('role');
+    });
+    root.querySelectorAll('.fc-more-link:not([role])').forEach((el) => {
+      el.setAttribute('role', 'button');
+      el.setAttribute('aria-label', `${el.textContent.trim()} cours, afficher tous les cours du jour`);
+    });
+  }
+  new MutationObserver(patchCalendarA11y).observe($('calendar'), { childList: true, subtree: true });
+  patchCalendarA11y();
 
   function toFcEvents() {
     const now = new Date();
@@ -374,6 +433,7 @@
       backgroundColor: e.cat.color,
       borderColor: e.cat.color,
       textColor: e.cat.text,
+      ...(e.end < now ? { backgroundColor: '#e3e6ec', textColor: '#3d414b' } : {}),
       classNames: e.end < now ? ['past'] : [],
       extendedProps: { raw: e },
     }));
@@ -412,7 +472,12 @@
   let searchTimer;
   $('search').addEventListener('input', (ev) => {
     clearTimeout(searchTimer);
-    searchTimer = setTimeout(() => { state.query = ev.target.value; refresh(); }, 150);
+    searchTimer = setTimeout(() => {
+      state.query = ev.target.value;
+      refresh();
+      const n = visibleEvents().length;
+      announce(state.query.trim() ? `${plural(n, 'cours trouvé', 'cours trouvés')}.` : `Recherche effacée, ${plural(n, 'cours affiché', 'cours affichés')}.`);
+    }, 400);
   });
 
   $('hide-weekends').addEventListener('change', (ev) => {
@@ -420,14 +485,18 @@
     calendar.setOption('weekends', !ev.target.checked);
   });
 
-  $('next-card').addEventListener('click', () => {
+  $('next-open').addEventListener('click', () => {
     if (!state.next) return;
     calendar.changeView(isMobile ? 'listWeek' : 'timeGridWeek', state.next.start);
     $('calendrier').scrollIntoView({ behavior: 'smooth' });
+    $('calendrier').focus({ preventScroll: true });
   });
 
   document.addEventListener('keydown', (ev) => {
-    if (ev.target.matches('input, textarea') || document.querySelector('dialog[open]')) return;
+    if (ev.target.matches('input, textarea, select') || document.querySelector('dialog[open]')) return;
+    if (ev.ctrlKey || ev.metaKey || ev.altKey) return;
+    // Shortcuts only apply when focus is inside the calendar section (WCAG 2.1.4).
+    if (!ev.target.closest || !ev.target.closest('#calendrier')) return;
     if (ev.key === 'ArrowLeft') calendar.prev();
     else if (ev.key === 'ArrowRight') calendar.next();
     else if (ev.key.toLowerCase() === 't') calendar.today();
@@ -458,7 +527,13 @@
     setTimeout(() => {
       document.body.classList.add('loaded');
       document.body.classList.remove('is-loading');
+      $('main').setAttribute('aria-busy', 'false');
       calendar.updateSize();
+      calendarReady = true;
+      const n = state.next;
+      if (n) {
+        announce(`Planning chargé. ${n.start <= new Date() ? 'Cours en cours' : 'Prochain cours'} : ${eventLabel(n)}.`);
+      }
     }, 350);
   }
 

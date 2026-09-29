@@ -13,6 +13,9 @@
   <link rel="stylesheet" href="style.css">
 </head>
 <body class="is-loading">
+  <a class="skip-link" href="#calendrier">Aller au calendrier</a>
+  <a class="skip-link" href="#a-venir">Aller à la liste des prochains cours</a>
+
   <div class="loader" aria-hidden="true">
     <span class="loader-brand">{EPITECH}</span>
     <span class="loader-count" id="loader-count">00</span>
@@ -20,9 +23,11 @@
 
   <div class="cursor" aria-hidden="true"><span class="cursor-label"></span></div>
 
-  <nav class="nav">
-    <a href="#top" class="brand" aria-label="Accueil">
-      <span class="brace">{</span>EPITECH<span class="brace">}</span>
+  <div id="sr-status" class="sr-only" role="status" aria-live="polite" aria-atomic="true"></div>
+
+  <nav class="nav" aria-label="Navigation principale">
+    <a href="#top" class="brand" aria-label="Epitech, retour en haut de page">
+      <span class="brace" aria-hidden="true">{</span>EPITECH<span class="brace" aria-hidden="true">}</span>
     </a>
     <ul class="nav-links">
       <li><a href="#stats" data-cursor="Go">Progression</a></li>
@@ -30,131 +35,148 @@
       <li><a href="#a-venir" data-cursor="Go">À venir</a></li>
     </ul>
     <a class="nav-cta" href="calendar.ics" download="planning-msc1.ics" data-cursor="↓">
-      Télécharger .ics <span class="arrow">↗</span>
+      Télécharger le planning complet<span class="sr-only"> au format iCalendar (.ics)</span><span class="arrow" aria-hidden="true">↗</span>
     </a>
   </nav>
 
-  <header class="hero" id="top">
-    <div class="hero-grid" aria-hidden="true"></div>
-    <p class="eyebrow reveal-load">
-      <span class="dot-live"></span> MSc 1 · Promo 2025 — 2027
-    </p>
-    <h1 class="hero-title">
-      <span class="mask"><span class="line">Planning</span></span>
-      <span class="mask"><span class="line accent">MSc 1<i class="underscore"></i></span></span>
-    </h1>
+  <main id="main" aria-busy="true">
+    <header class="hero" id="top">
+      <div class="hero-grid" aria-hidden="true"></div>
+      <p class="eyebrow reveal-load">
+        <span class="dot-live" aria-hidden="true"></span> MSc 1 · Promo 2025 — 2027
+      </p>
+      <h1 class="hero-title">
+        <span class="mask"><span class="line">Planning</span></span>
+        <span class="mask"><span class="line accent">MSc 1<i class="underscore" aria-hidden="true"></i></span></span>
+      </h1>
 
-    <div class="hero-bottom">
-      <p class="hero-lead reveal-load">
-        Tous les cours, kick-offs et séminaires de l'année, réunis dans un seul calendrier interactif.
+      <div class="hero-bottom">
+        <p class="hero-lead reveal-load">
+          Tous les cours, kick-offs et séminaires de l'année, réunis dans un seul calendrier interactif.
+        </p>
+
+        <section class="next-card reveal-load" id="next-card" aria-labelledby="next-tag">
+          <div class="next-head">
+            <h2 class="tag" id="next-tag">Prochain cours</h2>
+            <span class="next-arrow" aria-hidden="true">↗</span>
+          </div>
+          <p class="next-title" id="next-title">Chargement…</p>
+          <p class="next-when" id="next-when"></p>
+          <p class="sr-only" id="countdown-sr"></p>
+          <div class="countdown" id="countdown" aria-hidden="true">
+            <div><span data-u="d">00</span><small>jours</small></div>
+            <div><span data-u="h">00</span><small>heures</small></div>
+            <div><span data-u="m">00</span><small>min</small></div>
+            <div><span data-u="s">00</span><small>sec</small></div>
+          </div>
+          <button type="button" class="next-link" id="next-open" data-cursor="Voir">
+            <span class="sr-only">Afficher ce cours dans le calendrier</span>
+          </button>
+        </section>
+      </div>
+
+      <a href="#stats" class="scroll-cue" aria-label="Aller à la section Progression">
+        <span aria-hidden="true">Scroll</span><i aria-hidden="true"></i>
+      </a>
+    </header>
+
+    <div class="marquee" aria-hidden="true">
+      <div class="marquee-track" id="marquee"></div>
+    </div>
+
+    <section class="stats" id="stats" aria-labelledby="stats-title">
+      <div class="section-head reveal">
+        <span class="index" aria-hidden="true">01</span>
+        <h2 id="stats-title">Progression<i class="underscore" aria-hidden="true"></i></h2>
+      </div>
+
+      <ul class="stats-grid" role="list">
+        <li class="stat reveal"><span class="num" id="stat-total" aria-hidden="true">0</span><span class="sr-only" id="stat-total-sr"></span><small aria-hidden="true">Séances au total</small></li>
+        <li class="stat reveal"><span class="num" id="stat-hours" aria-hidden="true">0</span><span class="sr-only" id="stat-hours-sr"></span><small aria-hidden="true">Heures de cours</small></li>
+        <li class="stat reveal"><span class="num" id="stat-done" aria-hidden="true">0</span><span class="sr-only" id="stat-done-sr"></span><small aria-hidden="true">Séances effectuées</small></li>
+        <li class="stat reveal"><span class="num" id="stat-left" aria-hidden="true">0</span><span class="sr-only" id="stat-left-sr"></span><small aria-hidden="true">Séances restantes</small></li>
+      </ul>
+
+      <div class="progress reveal">
+        <div class="progress-top" aria-hidden="true">
+          <span>Année en cours</span>
+          <span class="progress-pct"><b id="progress-pct">0</b>%</span>
+        </div>
+        <div class="progress-track" id="progress-track" role="progressbar" aria-label="Progression de l'année" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0">
+          <div class="progress-bar" id="progress-bar"></div>
+        </div>
+        <p class="progress-label" id="progress-label"></p>
+      </div>
+    </section>
+
+    <section class="planning" id="calendrier" aria-labelledby="cal-title" tabindex="-1">
+      <div class="section-head reveal">
+        <span class="index" aria-hidden="true">02</span>
+        <h2 id="cal-title">Le calendrier<i class="underscore" aria-hidden="true"></i></h2>
+      </div>
+
+      <p class="sr-only">
+        Conseil : la vue « Liste » est la plus confortable avec un lecteur d'écran.
+        Chaque cours est un bouton qui ouvre sa fiche détaillée.
       </p>
 
-      <article class="next-card reveal-load" id="next-card" data-cursor="Voir">
-        <div class="next-head">
-          <span class="tag" id="next-tag">Prochain cours</span>
-          <span class="next-arrow">↗</span>
+      <div class="toolbar reveal" role="search">
+        <div class="search">
+          <span aria-hidden="true">⌕</span>
+          <label for="search" class="sr-only">Rechercher un cours</label>
+          <input id="search" type="search" placeholder="Rechercher un cours…" aria-describedby="search-help" autocomplete="off">
+          <kbd aria-hidden="true">/</kbd>
+          <span id="search-help" class="sr-only">Le nombre de résultats est annoncé automatiquement.</span>
         </div>
-        <h2 class="next-title" id="next-title">Chargement…</h2>
-        <p class="next-when" id="next-when"></p>
-        <div class="countdown" id="countdown">
-          <div><span data-u="d">00</span><small>jours</small></div>
-          <div><span data-u="h">00</span><small>heures</small></div>
-          <div><span data-u="m">00</span><small>min</small></div>
-          <div><span data-u="s">00</span><small>sec</small></div>
-        </div>
-      </article>
-    </div>
-
-    <a href="#stats" class="scroll-cue" aria-label="Défiler">
-      <span>Scroll</span><i></i>
-    </a>
-  </header>
-
-  <div class="marquee" aria-hidden="true">
-    <div class="marquee-track" id="marquee"></div>
-  </div>
-
-  <section class="stats" id="stats">
-    <div class="section-head reveal">
-      <span class="index">01</span>
-      <h2>Progression<i class="underscore"></i></h2>
-    </div>
-
-    <div class="stats-grid">
-      <div class="stat reveal"><span class="num" id="stat-total">0</span><small>Séances au total</small></div>
-      <div class="stat reveal"><span class="num" id="stat-hours">0</span><small>Heures de cours</small></div>
-      <div class="stat reveal"><span class="num" id="stat-done">0</span><small>Séances effectuées</small></div>
-      <div class="stat reveal"><span class="num" id="stat-left">0</span><small>Séances restantes</small></div>
-    </div>
-
-    <div class="progress reveal">
-      <div class="progress-top">
-        <span>Année en cours</span>
-        <span class="progress-pct"><b id="progress-pct">0</b>%</span>
+        <fieldset class="chips" id="filters">
+          <legend class="sr-only">Types de cours à afficher</legend>
+        </fieldset>
+        <label class="switch">
+          <input type="checkbox" id="hide-weekends" checked>
+          <span class="switch-ui" aria-hidden="true"></span>
+          <span>Masquer les week-ends</span>
+        </label>
       </div>
-      <div class="progress-track"><div class="progress-bar" id="progress-bar"></div></div>
-      <p class="progress-label" id="progress-label"></p>
-    </div>
-  </section>
 
-  <section class="planning" id="calendrier">
-    <div class="section-head reveal">
-      <span class="index">02</span>
-      <h2>Le calendrier<i class="underscore"></i></h2>
-    </div>
+      <div class="calendar-wrap reveal">
+        <div id="calendar"></div>
+      </div>
+      <p class="hint">Raccourcis clavier (quand le calendrier a le focus) : <kbd>←</kbd> <kbd>→</kbd> période précédente ou suivante · <kbd>T</kbd> aujourd'hui · <kbd>/</kbd> rechercher</p>
+    </section>
 
-    <div class="toolbar reveal">
-      <label class="search">
-        <span>⌕</span>
-        <input id="search" type="search" placeholder="Rechercher un cours…" aria-label="Rechercher">
-        <kbd>/</kbd>
-      </label>
-      <div class="chips" id="filters"></div>
-      <label class="switch">
-        <input type="checkbox" id="hide-weekends" checked>
-        <span class="switch-ui"></span>
-        <span>Masquer les week-ends</span>
-      </label>
-    </div>
-
-    <div class="calendar-wrap reveal">
-      <div id="calendar"></div>
-    </div>
-    <p class="hint">Raccourcis : <kbd>←</kbd> <kbd>→</kbd> naviguer · <kbd>T</kbd> aujourd'hui · <kbd>/</kbd> rechercher</p>
-  </section>
-
-  <section class="upcoming" id="a-venir">
-    <div class="section-head reveal">
-      <span class="index">03</span>
-      <h2>À venir<i class="underscore"></i></h2>
-    </div>
-    <ol class="upcoming-list" id="upcoming"></ol>
-  </section>
+    <section class="upcoming" id="a-venir" aria-labelledby="up-title" tabindex="-1">
+      <div class="section-head reveal">
+        <span class="index" aria-hidden="true">03</span>
+        <h2 id="up-title">À venir<i class="underscore" aria-hidden="true"></i></h2>
+      </div>
+      <ol class="upcoming-list" id="upcoming"></ol>
+    </section>
+  </main>
 
   <footer class="footer">
-    <p class="footer-big"><span>{</span>MSc 1<span>}</span></p>
+    <p class="footer-big" aria-hidden="true"><span>{</span>MSc 1<span>}</span></p>
     <div class="footer-row">
       <span>Planning MSc 1 · Epitech</span>
-      <a href="#top" data-cursor="↑">Haut de page ↑</a>
+      <a href="#top" data-cursor="↑">Haut de page<span aria-hidden="true"> ↑</span></a>
     </div>
   </footer>
 
-  <dialog id="event-dialog">
+  <dialog id="event-dialog" aria-labelledby="dlg-title" aria-describedby="dlg-body">
     <form method="dialog">
       <div class="dialog-head" id="dlg-head">
-        <span class="tag" id="dlg-cat"></span>
-        <button class="close" aria-label="Fermer">✕</button>
+        <span class="tag"><span class="sr-only">Catégorie : </span><span id="dlg-cat"></span></span>
+        <button class="close" aria-label="Fermer la fiche du cours"><span aria-hidden="true">✕</span></button>
       </div>
-      <h3 id="dlg-title"></h3>
-      <dl class="dlg-body">
+      <h2 id="dlg-title" class="dlg-title"></h2>
+      <dl class="dlg-body" id="dlg-body">
         <div><dt>Date</dt><dd id="dlg-date"></dd></div>
         <div><dt>Horaire</dt><dd id="dlg-time"></dd></div>
         <div><dt>Durée</dt><dd id="dlg-duration"></dd></div>
         <div><dt>Modalité</dt><dd id="dlg-desc"></dd></div>
       </dl>
       <div class="dialog-foot">
-        <button type="button" id="dlg-gcal" class="btn primary">Google Agenda ↗</button>
-        <button type="button" id="dlg-ics" class="btn">Exporter .ics ↓</button>
+        <button type="button" id="dlg-gcal" class="btn primary">Ajouter à Google Agenda<span class="sr-only"> (nouvel onglet)</span><span aria-hidden="true"> ↗</span></button>
+        <button type="button" id="dlg-ics" class="btn">Exporter ce cours en .ics<span aria-hidden="true"> ↓</span></button>
       </div>
     </form>
   </dialog>
